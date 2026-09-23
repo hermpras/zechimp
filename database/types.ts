@@ -85,6 +85,110 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["campaigns"]["Insert"]>;
         Relationships: [];
       };
+      missions: {
+        Row: {
+          id: string;
+          campaign_id: string | null;
+          type: "FOLLOW" | "LIKE_REPOST" | "COMMENT";
+          title: string;
+          description: string | null;
+          reward_points: number;
+          target_url: string | null;
+          is_permanent: boolean;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_id?: string | null;
+          type: "FOLLOW" | "LIKE_REPOST" | "COMMENT";
+          title: string;
+          description?: string | null;
+          reward_points?: number;
+          target_url?: string | null;
+          is_permanent?: boolean;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["missions"]["Insert"]>;
+        Relationships: [];
+      };
+      mission_completions: {
+        Row: {
+          id: string;
+          user_id: string;
+          mission_id: string;
+          campaign_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          mission_id: string;
+          campaign_id?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["mission_completions"]["Insert"]>;
+        Relationships: [];
+      };
+      comment_proofs: {
+        Row: {
+          id: string;
+          user_id: string;
+          mission_id: string;
+          campaign_id: string;
+          comment_url: string;
+          status: "PENDING" | "APPROVED" | "REJECTED";
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          review_reason: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          mission_id: string;
+          campaign_id: string;
+          comment_url: string;
+          status?: "PENDING" | "APPROVED" | "REJECTED";
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          review_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["comment_proofs"]["Insert"]>;
+        Relationships: [];
+      };
+      point_transactions: {
+        Row: {
+          id: string;
+          user_id: string;
+          amount: number;
+          type: "MISSION_REWARD" | "ADMIN_ADJUSTMENT" | "TICKET_CONVERSION";
+          source: string;
+          mission_id: string | null;
+          campaign_id: string | null;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          amount: number;
+          type: "MISSION_REWARD" | "ADMIN_ADJUSTMENT" | "TICKET_CONVERSION";
+          source: string;
+          mission_id?: string | null;
+          campaign_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["point_transactions"]["Insert"]>;
+        Relationships: [];
+      };
       raffles: {
         Row: {
           id: string;

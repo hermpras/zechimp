@@ -2,11 +2,16 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { LogoutButton } from "@/app/components/auth-button";
+import { CampaignSection } from "@/app/components/campaign-section";
 import type { Database } from "@/database/types";
 
 type XAccountRow = Database["public"]["Tables"]["x_accounts"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+type CampaignRow = Database["public"]["Tables"]["campaigns"]["Row"];
+type MissionRow = Database["public"]["Tables"]["missions"]["Row"];
+type CommentProofRow = Database["public"]["Tables"]["comment_proofs"]["Row"];
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient();
@@ -18,7 +23,9 @@ export default async function DashboardPage() {
     redirect("/");
   }
 
-  // Fetch X Account data
+  const adminClient = createSupabaseAdminClient();
+
+  // 1. Fetch X Account data
   const { data: xAccountData } = await supabase
     .from("x_accounts")
     .select("*")
@@ -27,7 +34,7 @@ export default async function DashboardPage() {
 
   const xAccount = xAccountData as XAccountRow | null;
 
-  // Fetch Profile data
+  // 2. Fetch Profile data
   const { data: profileData } = await supabase
     .from("profiles")
     .select("*")
@@ -35,6 +42,67 @@ export default async function DashboardPage() {
     .maybeSingle();
 
   const profile = profileData as ProfileRow | null;
+
+  // 3. Fetch Active Campaign
+  const { data: campaignData } = await adminClient
+    .from("campaigns")
+    .select("*")
+    .eq("status", "ACTIVE")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const campaign = campaignData as CampaignRow | null;
+
+  // 4. Fetch Active Missions for Active Campaign + Permanent Follow Missions
+  let missions: MissionRow[] = [];
+
+  if (campaign) {
+    const { data: campaignMissions } = await adminClient
+      .from("missions")
+      .select("*")
+      .eq("is_active", true)
+      .or(`campaign_id.eq.${campaign.id},is_permanent.eq.true`)
+      .order("created_at", { ascending: true });
+
+    missions = (campaignMissions || []) as MissionRow[];
+  } else {
+    const { data: permanentMissions } = await adminClient
+      .from("missions")
+      .select("*")
+      .eq("is_active", true)
+      .eq("is_permanent", true)
+      .order("created_at", { ascending: true });
+
+    missions = (permanentMissions || []) as MissionRow[];
+  }
+
+  // 5. Fetch User's Mission Completions
+  const { data: userCompletions } = await adminClient
+    .from("mission_completions")
+    .select("mission_id")
+    .eq("user_id", user.id);
+
+  const completedMissionIds = (userCompletions || []).map((c) => c.mission_id);
+
+  // 6. Fetch User's Comment Proofs
+  const { data: userProofsData } = await adminClient
+    .from("comment_proofs")
+    .select("*")
+    .eq("user_id", user.id);
+
+  const commentProofs = (userProofsData || []) as CommentProofRow[];
+
+  // 7. Calculate Total Points from point_transactions ledger
+  const { data: userTxs } = await adminClient
+    .from("point_transactions")
+    .select("amount")
+    .eq("user_id", user.id);
+
+  const pointsBalance = (userTxs || []).reduce(
+    (sum, tx) => sum + (tx.amount || 0),
+    0,
+  );
 
   const username = xAccount?.username || profile?.username || "unknown";
   const displayName =
@@ -61,87 +129,53 @@ export default async function DashboardPage() {
           <LogoutButton />
         </div>
 
-        {/* Header Title */}
-        <div>
-          <div className="inline-flex items-center gap-2 border border-[var(--accent)] bg-[rgba(183,255,0,0.1)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">
-            <span className="h-2 w-2 rounded-full bg-[var(--accent)] animate-pulse" />
-            AUTHENTICATED SESSION
-          </div>
-          <h1 className="mt-4 text-4xl font-black leading-none sm:text-6xl">
-            Identity Foundation
-          </h1>
-          <p className="mt-4 max-w-xl text-base text-[var(--muted)]">
-            Your X identity has been synchronized with Supabase Auth.
-          </p>
-        </div>
-
-        {/* Identity Card */}
-        <div className="border border-[var(--border)] bg-[var(--background-raised)] p-6 sm:p-8">
+        {/* Identity Bar */}
+        <div className="border border-[var(--border)] bg-[var(--background-raised)] p-6">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-5">
               {avatarUrl ? (
                 <Image
                   src={avatarUrl}
                   alt={displayName}
-                  width={64}
-                  height={64}
-                  className="h-16 w-16 border border-[var(--border)] object-cover"
+                  width={56}
+                  height={56}
+                  className="h-14 w-14 border border-[var(--border)] object-cover"
                   unoptimized
                 />
               ) : (
-                <div className="flex h-16 w-16 items-center justify-center border border-[var(--accent)] bg-[#121212] text-xl font-black text-[var(--accent)]">
+                <div className="flex h-14 w-14 items-center justify-center border border-[var(--accent)] bg-[#121212] text-lg font-black text-[var(--accent)]">
                   {displayName.substring(0, 2).toUpperCase()}
                 </div>
               )}
               <div>
-                <h2 className="text-2xl font-black text-[var(--foreground)]">
+                <h2 className="text-xl font-black text-[var(--foreground)]">
                   {displayName}
                 </h2>
-                <p className="text-sm font-bold text-[var(--accent)]">
+                <p className="text-xs font-bold text-[var(--accent)]">
                   @{username}
                 </p>
               </div>
             </div>
 
-            <div className="inline-flex items-center gap-2 rounded-none border border-[var(--border)] bg-[#121212] px-4 py-2 text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">
-              <svg
-                className="h-4 w-4 fill-current text-[var(--accent)]"
-                viewBox="0 0 24 24"
-              >
-                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-              </svg>
-              X OAuth 2.0 Connected
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-4 border-t border-[var(--border)] pt-6 sm:grid-cols-2">
-            <div className="border border-[var(--border)] bg-[#090909] p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Permanent X User ID (x_user_id)
-              </p>
-              <p className="mt-2 font-mono text-sm font-bold text-[var(--foreground)]">
-                {xUserId}
-              </p>
-            </div>
-
-            <div className="border border-[var(--border)] bg-[#090909] p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Supabase Auth ID (user_id)
-              </p>
-              <p className="mt-2 font-mono text-xs font-bold text-[var(--foreground)] truncate">
-                {user.id}
-              </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="border border-[var(--border)] bg-[#121212] px-3.5 py-1.5 font-mono text-xs text-[var(--muted)]">
+                X ID: <span className="text-[var(--foreground)] font-bold">{xUserId}</span>
+              </div>
+              <div className="border border-[var(--accent)] bg-[rgba(183,255,0,0.1)] px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-[var(--accent)]">
+                {pointsBalance} PTS
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Footer info */}
-        <div className="text-xs text-[var(--muted)]">
-          <p>
-            Phase 3 Authentication complete. Future phases will build campaign
-            missions, point balances, and raffle entries on top of this identity.
-          </p>
-        </div>
+        {/* Campaign & Missions Section */}
+        <CampaignSection
+          campaign={campaign}
+          missions={missions}
+          completedMissionIds={completedMissionIds}
+          commentProofs={commentProofs}
+          pointsBalance={pointsBalance}
+        />
       </section>
     </main>
   );
