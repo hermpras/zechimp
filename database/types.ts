@@ -33,6 +33,31 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Relationships: [];
+      };
+      x_accounts: {
+        Row: {
+          id: string;
+          user_id: string;
+          x_user_id: string;
+          username: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          x_user_id: string;
+          username: string;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["x_accounts"]["Insert"]>;
+        Relationships: [];
       };
       campaigns: {
         Row: {
@@ -58,6 +83,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["campaigns"]["Insert"]>;
+        Relationships: [];
       };
       raffles: {
         Row: {
@@ -89,6 +115,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["raffles"]["Insert"]>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

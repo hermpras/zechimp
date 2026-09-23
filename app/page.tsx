@@ -1,11 +1,12 @@
+import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasPublicSupabaseEnv } from "@/lib/env";
+import { LoginWithXButton, LogoutButton } from "@/app/components/auth-button";
 
 export default async function Home() {
   const hasSupabaseEnv = hasPublicSupabaseEnv();
-  const user = hasSupabaseEnv
-    ? (await (await createSupabaseServerClient()).auth.getUser()).data.user
-    : null;
+  const supabase = hasSupabaseEnv ? await createSupabaseServerClient() : null;
+  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
 
   return (
     <main className="min-h-screen px-6 py-8 sm:px-10">
@@ -15,31 +16,45 @@ export default async function Home() {
             ZECHIMP
           </p>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--muted)]">
-            Foundation
+            Whitelist Campaign System
           </p>
         </div>
 
         <div className="max-w-3xl">
           <p className="mb-4 text-sm font-bold uppercase tracking-[0.22em] text-[var(--muted)]">
-            WL campaign system
+            Phase 03 — Authentication & Identity
           </p>
           <h1 className="text-5xl font-black leading-[0.95] sm:text-7xl">
-            ZECHIMP is running.
+            ZECHIMP Authentication
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-[var(--muted)]">
-            Next.js, TypeScript, Tailwind CSS, and Supabase foundations are in
-            place for the campaign, points, tickets, referrals, raffles, and WL
-            claim flows.
+            Connect your X account to access the whitelist campaign, track points, and claim your spot.
           </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          {user ? (
+            <>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center border border-[var(--accent)] bg-[var(--accent)] px-6 py-3.5 text-xs font-black uppercase tracking-[0.2em] text-[#090909] transition-all hover:bg-transparent hover:text-[var(--accent)]"
+              >
+                GO TO DASHBOARD
+              </Link>
+              <LogoutButton />
+            </>
+          ) : (
+            <LoginWithXButton />
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
           <StatusPanel label="App Router" value="Ready" />
           <StatusPanel
             label="Supabase Auth"
-            value={hasSupabaseEnv ? (user ? "Session" : "No session") : "Env needed"}
+            value={hasSupabaseEnv ? (user ? "Authenticated" : "No session") : "Env needed"}
           />
-          <StatusPanel label="Phase" value="02" />
+          <StatusPanel label="Phase" value="03" />
         </div>
       </section>
     </main>
