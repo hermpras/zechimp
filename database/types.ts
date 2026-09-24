@@ -289,6 +289,68 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["raffles"]["Insert"]>;
         Relationships: [];
       };
+      raffle_entries: {
+        Row: {
+          id: string;
+          raffle_id: string;
+          user_id: string;
+          entry_index: number;
+          source_ticket_transaction_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          raffle_id: string;
+          user_id: string;
+          entry_index: number;
+          source_ticket_transaction_id?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["raffle_entries"]["Insert"]>;
+        Relationships: [];
+      };
+      raffle_winners: {
+        Row: {
+          id: string;
+          raffle_id: string;
+          entry_id: string;
+          user_id: string;
+          winner_position: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          raffle_id: string;
+          entry_id: string;
+          user_id: string;
+          winner_position: number;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["raffle_winners"]["Insert"]>;
+        Relationships: [];
+      };
+      admin_audit_logs: {
+        Row: {
+          id: string;
+          admin_user_id: string;
+          action: string;
+          entity_type: string;
+          entity_id: string | null;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          admin_user_id: string;
+          action: string;
+          entity_type: string;
+          entity_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["admin_audit_logs"]["Insert"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

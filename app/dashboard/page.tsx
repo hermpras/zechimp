@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { LogoutButton } from "@/app/components/auth-button";
 import { CampaignSection } from "@/app/components/campaign-section";
 import { ReferralCard } from "@/app/components/referral-card";
+import { RaffleCard, type WinnerInfo } from "@/app/components/raffle-card";
 import { getOrCreateReferralCode } from "@/lib/economy";
 import { getSiteUrl } from "@/lib/env";
 import type { Database } from "@/database/types";
@@ -15,6 +16,7 @@ type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 type CampaignRow = Database["public"]["Tables"]["campaigns"]["Row"];
 type MissionRow = Database["public"]["Tables"]["missions"]["Row"];
 type CommentProofRow = Database["public"]["Tables"]["comment_proofs"]["Row"];
+type RaffleRow = Database["public"]["Tables"]["raffles"]["Row"];
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient();
@@ -131,6 +133,71 @@ export default async function DashboardPage() {
 
   const qualifiedCount = qualifiedReferrals?.length || 0;
 
+  // 10. Fetch Current Raffle (OPEN, CLOSED, or DRAWN)
+  const { data: raffleData } = await adminClient
+    .from("raffles")
+    .select("*")
+    .in("status", ["OPEN", "CLOSED", "DRAWN"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const raffle = raffleData as RaffleRow | null;
+
+  let userCommittedTickets = 0;
+  let totalPoolEntries = 0;
+  let winners: WinnerInfo[] = [];
+
+  if (raffle) {
+    const { data: userEntries } = await adminClient
+      .from("raffle_entries")
+      .select("id")
+      .eq("raffle_id", raffle.id)
+      .eq("user_id", user.id);
+
+    userCommittedTickets = userEntries?.length || 0;
+
+    const { data: allRaffleEntries } = await adminClient
+      .from("raffle_entries")
+      .select("id")
+      .eq("raffle_id", raffle.id);
+
+    totalPoolEntries = allRaffleEntries?.length || 0;
+
+    if (raffle.status === "DRAWN") {
+      const { data: rawWinners } = await adminClient
+        .from("raffle_winners")
+        .select("winner_position, user_id, entry_id")
+        .eq("raffle_id", raffle.id)
+        .order("winner_position", { ascending: true });
+
+      if (rawWinners && rawWinners.length > 0) {
+        const winnerUserIds = rawWinners.map((w) => w.user_id);
+        const { data: xAccounts } = await adminClient
+          .from("x_accounts")
+          .select("user_id, username, display_name")
+          .in("user_id", winnerUserIds);
+
+        const { data: profiles } = await adminClient
+          .from("profiles")
+          .select("user_id, username, display_name")
+          .in("user_id", winnerUserIds);
+
+        winners = rawWinners.map((w) => {
+          const xAcc = xAccounts?.find((x) => x.user_id === w.user_id);
+          const prof = profiles?.find((p) => p.user_id === w.user_id);
+          return {
+            winner_position: w.winner_position,
+            user_id: w.user_id,
+            entry_id: w.entry_id,
+            username: xAcc?.username || prof?.username || null,
+            display_name: xAcc?.display_name || prof?.display_name || null,
+          };
+        });
+      }
+    }
+  }
+
   const username = xAccount?.username || profile?.username || "unknown";
   const displayName =
     xAccount?.display_name || profile?.display_name || username;
@@ -202,6 +269,16 @@ export default async function DashboardPage() {
           referralCode={referralCode}
           referralLink={referralLink}
           qualifiedCount={qualifiedCount}
+        />
+
+        {/* Whitelist Raffle Engine Section */}
+        <RaffleCard
+          raffle={raffle}
+          userCommittedTickets={userCommittedTickets}
+          totalPoolEntries={totalPoolEntries}
+          availableTickets={ticketBalance}
+          winners={winners}
+          currentUserId={user.id}
         />
 
         {/* Campaign & Missions Section */}
