@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSiteUrl } from "@/lib/env";
+import { getOrCreateReferralCode } from "@/lib/economy";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -86,6 +88,39 @@ export async function GET(request: Request) {
 
         if (xAccountError) {
           console.error("Failed to sync x_account:", xAccountError);
+        }
+      }
+
+      // 3. Guarantee referral code exists for user
+      await getOrCreateReferralCode(user.id);
+
+      // 4. Process pending referral link from zechimp_ref cookie if present
+      const cookieStore = await cookies();
+      const refCookie = cookieStore.get("zechimp_ref")?.value;
+
+      if (refCookie) {
+        const { data: refCodeRecord } = await adminClient
+          .from("referral_codes")
+          .select("id, user_id")
+          .eq("code", refCookie.trim())
+          .maybeSingle();
+
+        if (refCodeRecord && refCodeRecord.user_id !== user.id) {
+          // Check if this referred user already has a recorded referral
+          const { data: existingReferral } = await adminClient
+            .from("referrals")
+            .select("id")
+            .eq("referred_user_id", user.id)
+            .maybeSingle();
+
+          if (!existingReferral) {
+            await adminClient.from("referrals").insert({
+              referrer_user_id: refCodeRecord.user_id,
+              referred_user_id: user.id,
+              referral_code_id: refCodeRecord.id,
+              status: "PENDING",
+            });
+          }
         }
       }
 

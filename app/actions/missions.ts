@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  processPointToTicketConversion,
+  processReferralQualification,
+} from "@/lib/economy";
 
 export type MissionActionResult = {
   success: boolean;
@@ -172,21 +176,11 @@ export async function completeMissionAction(
       console.error("Failed to record point transaction:", txErr);
     }
 
-    // Recalculate total points for profile
-    const { data: allTxs } = await adminClient
-      .from("point_transactions")
-      .select("amount")
-      .eq("user_id", user.id);
+    // 6. Process Referral Qualification for the completing user
+    await processReferralQualification(user.id);
 
-    const totalPoints = (allTxs || []).reduce(
-      (sum, tx) => sum + (tx.amount || 0),
-      0,
-    );
-
-    await adminClient
-      .from("profiles")
-      .update({ points_balance: totalPoints, updated_at: new Date().toISOString() })
-      .eq("user_id", user.id);
+    // 7. Process Automatic Point -> Ticket Conversion (10 pts = 1 ticket)
+    const { currentPoints } = await processPointToTicketConversion(user.id);
 
     revalidatePath("/dashboard");
 
@@ -194,7 +188,7 @@ export async function completeMissionAction(
       success: true,
       message: `Mission completed! +${rewardAmount} points awarded.`,
       pointsEarned: rewardAmount,
-      totalPoints,
+      totalPoints: currentPoints,
     };
   } catch (err: unknown) {
     console.error("completeMissionAction error:", err);
@@ -275,21 +269,11 @@ export async function reviewCommentProofAction(
       },
     });
 
-    // Update profile points balance
-    const { data: allTxs } = await adminClient
-      .from("point_transactions")
-      .select("amount")
-      .eq("user_id", proof.user_id);
+    // Process Referral Qualification for the user who submitted proof
+    await processReferralQualification(proof.user_id);
 
-    const totalPoints = (allTxs || []).reduce(
-      (sum, tx) => sum + (tx.amount || 0),
-      0,
-    );
-
-    await adminClient
-      .from("profiles")
-      .update({ points_balance: totalPoints, updated_at: new Date().toISOString() })
-      .eq("user_id", proof.user_id);
+    // Process Automatic Point -> Ticket Conversion
+    const { currentPoints } = await processPointToTicketConversion(proof.user_id);
 
     revalidatePath("/dashboard");
 
@@ -297,7 +281,7 @@ export async function reviewCommentProofAction(
       success: true,
       message: `Comment proof approved! +${rewardAmount} points awarded.`,
       pointsEarned: rewardAmount,
-      totalPoints,
+      totalPoints: currentPoints,
     };
   } catch (err: unknown) {
     console.error("reviewCommentProofAction error:", err);

@@ -5,6 +5,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { LogoutButton } from "@/app/components/auth-button";
 import { CampaignSection } from "@/app/components/campaign-section";
+import { ReferralCard } from "@/app/components/referral-card";
+import { getOrCreateReferralCode } from "@/lib/economy";
+import { getSiteUrl } from "@/lib/env";
 import type { Database } from "@/database/types";
 
 type XAccountRow = Database["public"]["Tables"]["x_accounts"]["Row"];
@@ -24,6 +27,7 @@ export default async function DashboardPage() {
   }
 
   const adminClient = createSupabaseAdminClient();
+  const siteUrl = getSiteUrl();
 
   // 1. Fetch X Account data
   const { data: xAccountData } = await supabase
@@ -94,15 +98,38 @@ export default async function DashboardPage() {
   const commentProofs = (userProofsData || []) as CommentProofRow[];
 
   // 7. Calculate Total Points from point_transactions ledger
-  const { data: userTxs } = await adminClient
+  const { data: userPointTxs } = await adminClient
     .from("point_transactions")
     .select("amount")
     .eq("user_id", user.id);
 
-  const pointsBalance = (userTxs || []).reduce(
+  const pointsBalance = (userPointTxs || []).reduce(
     (sum, tx) => sum + (tx.amount || 0),
     0,
   );
+
+  // 8. Calculate Total Tickets from ticket_transactions ledger
+  const { data: userTicketTxs } = await adminClient
+    .from("ticket_transactions")
+    .select("amount")
+    .eq("user_id", user.id);
+
+  const ticketBalance = (userTicketTxs || []).reduce(
+    (sum, tx) => sum + (tx.amount || 0),
+    0,
+  );
+
+  // 9. Referral Code & Qualified Count
+  const referralCode = await getOrCreateReferralCode(user.id);
+  const referralLink = `${siteUrl}/?ref=${referralCode}`;
+
+  const { data: qualifiedReferrals } = await adminClient
+    .from("referrals")
+    .select("id")
+    .eq("referrer_user_id", user.id)
+    .in("status", ["QUALIFIED", "REWARDED"]);
+
+  const qualifiedCount = qualifiedReferrals?.length || 0;
 
   const username = xAccount?.username || profile?.username || "unknown";
   const displayName =
@@ -162,11 +189,20 @@ export default async function DashboardPage() {
                 X ID: <span className="text-[var(--foreground)] font-bold">{xUserId}</span>
               </div>
               <div className="border border-[var(--accent)] bg-[rgba(183,255,0,0.1)] px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-[var(--accent)]">
-                {pointsBalance} PTS
+                {ticketBalance} TICKETS
               </div>
             </div>
           </div>
         </div>
+
+        {/* Economy & Referrals Section */}
+        <ReferralCard
+          pointsBalance={pointsBalance}
+          ticketBalance={ticketBalance}
+          referralCode={referralCode}
+          referralLink={referralLink}
+          qualifiedCount={qualifiedCount}
+        />
 
         {/* Campaign & Missions Section */}
         <CampaignSection

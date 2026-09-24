@@ -189,6 +189,74 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["point_transactions"]["Insert"]>;
         Relationships: [];
       };
+      ticket_transactions: {
+        Row: {
+          id: string;
+          user_id: string;
+          amount: number;
+          type: "REFERRAL_REWARD" | "POINT_CONVERSION" | "RAFFLE_ENTRY" | "ADMIN_ADJUSTMENT";
+          source: string;
+          raffle_id: string | null;
+          referral_id: string | null;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          amount: number;
+          type: "REFERRAL_REWARD" | "POINT_CONVERSION" | "RAFFLE_ENTRY" | "ADMIN_ADJUSTMENT";
+          source: string;
+          raffle_id?: string | null;
+          referral_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["ticket_transactions"]["Insert"]>;
+        Relationships: [];
+      };
+      referral_codes: {
+        Row: {
+          id: string;
+          user_id: string;
+          code: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          code: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["referral_codes"]["Insert"]>;
+        Relationships: [];
+      };
+      referrals: {
+        Row: {
+          id: string;
+          referrer_user_id: string;
+          referred_user_id: string;
+          referral_code_id: string;
+          status: "PENDING" | "QUALIFIED" | "REWARDED" | "REJECTED";
+          qualified_at: string | null;
+          rewarded_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          referrer_user_id: string;
+          referred_user_id: string;
+          referral_code_id: string;
+          status?: "PENDING" | "QUALIFIED" | "REWARDED" | "REJECTED";
+          qualified_at?: string | null;
+          rewarded_at?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["referrals"]["Insert"]>;
+        Relationships: [];
+      };
       raffles: {
         Row: {
           id: string;

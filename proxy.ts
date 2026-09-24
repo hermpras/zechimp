@@ -6,6 +6,17 @@ export async function proxy(request: NextRequest) {
     request,
   });
 
+  // Capture referral code from URL query ?ref=CODE
+  const refCode = request.nextUrl.searchParams.get("ref");
+  if (refCode) {
+    supabaseResponse.cookies.set("zechimp_ref", refCode.trim(), {
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      httpOnly: false,
+      sameSite: "lax",
+    });
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
