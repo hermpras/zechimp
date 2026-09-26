@@ -35,6 +35,7 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
         Relationships: [];
       };
+
       x_accounts: {
         Row: {
           id: string;
@@ -59,6 +60,7 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["x_accounts"]["Insert"]>;
         Relationships: [];
       };
+
       campaigns: {
         Row: {
           id: string;
@@ -85,6 +87,7 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["campaigns"]["Insert"]>;
         Relationships: [];
       };
+
       missions: {
         Row: {
           id: string;
@@ -115,6 +118,7 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["missions"]["Insert"]>;
         Relationships: [];
       };
+
       mission_completions: {
         Row: {
           id: string;
@@ -130,9 +134,12 @@ export type Database = {
           campaign_id?: string | null;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["mission_completions"]["Insert"]>;
+        Update: Partial<
+          Database["public"]["Tables"]["mission_completions"]["Insert"]
+        >;
         Relationships: [];
       };
+
       comment_proofs: {
         Row: {
           id: string;
@@ -160,9 +167,12 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["comment_proofs"]["Insert"]>;
+        Update: Partial<
+          Database["public"]["Tables"]["comment_proofs"]["Insert"]
+        >;
         Relationships: [];
       };
+
       point_transactions: {
         Row: {
           id: string;
@@ -186,15 +196,22 @@ export type Database = {
           metadata?: Json;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["point_transactions"]["Insert"]>;
+        Update: Partial<
+          Database["public"]["Tables"]["point_transactions"]["Insert"]
+        >;
         Relationships: [];
       };
+
       ticket_transactions: {
         Row: {
           id: string;
           user_id: string;
           amount: number;
-          type: "REFERRAL_REWARD" | "POINT_CONVERSION" | "RAFFLE_ENTRY" | "ADMIN_ADJUSTMENT";
+          type:
+            | "REFERRAL_REWARD"
+            | "POINT_CONVERSION"
+            | "RAFFLE_ENTRY"
+            | "ADMIN_ADJUSTMENT";
           source: string;
           raffle_id: string | null;
           referral_id: string | null;
@@ -205,16 +222,23 @@ export type Database = {
           id?: string;
           user_id: string;
           amount: number;
-          type: "REFERRAL_REWARD" | "POINT_CONVERSION" | "RAFFLE_ENTRY" | "ADMIN_ADJUSTMENT";
+          type:
+            | "REFERRAL_REWARD"
+            | "POINT_CONVERSION"
+            | "RAFFLE_ENTRY"
+            | "ADMIN_ADJUSTMENT";
           source: string;
           raffle_id?: string | null;
           referral_id?: string | null;
           metadata?: Json;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["ticket_transactions"]["Insert"]>;
+        Update: Partial<
+          Database["public"]["Tables"]["ticket_transactions"]["Insert"]
+        >;
         Relationships: [];
       };
+
       referral_codes: {
         Row: {
           id: string;
@@ -230,9 +254,12 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["referral_codes"]["Insert"]>;
+        Update: Partial<
+          Database["public"]["Tables"]["referral_codes"]["Insert"]
+        >;
         Relationships: [];
       };
+
       referrals: {
         Row: {
           id: string;
@@ -257,6 +284,7 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["referrals"]["Insert"]>;
         Relationships: [];
       };
+
       raffles: {
         Row: {
           id: string;
@@ -289,6 +317,7 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["raffles"]["Insert"]>;
         Relationships: [];
       };
+
       raffle_entries: {
         Row: {
           id: string;
@@ -306,9 +335,12 @@ export type Database = {
           source_ticket_transaction_id?: string | null;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["raffle_entries"]["Insert"]>;
+        Update: Partial<
+          Database["public"]["Tables"]["raffle_entries"]["Insert"]
+        >;
         Relationships: [];
       };
+
       raffle_winners: {
         Row: {
           id: string;
@@ -326,9 +358,43 @@ export type Database = {
           winner_position: number;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["raffle_winners"]["Insert"]>;
+        Update: Partial<
+          Database["public"]["Tables"]["raffle_winners"]["Insert"]
+        >;
         Relationships: [];
       };
+
+      wl_claims: {
+        Row: {
+          id: string;
+          raffle_winner_id: string;
+          user_id: string;
+          raffle_id: string;
+          wallet_address: string ;
+          wallet_chain: string;
+          status: "CLAIMABLE" | "CLAIMED" | "EXPIRED";
+          claim_deadline: string | null;
+          claimed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          raffle_winner_id: string;
+          user_id: string;
+          raffle_id: string;
+          wallet_address?: string | null;
+          wallet_chain?: string;
+          status?: "CLAIMABLE" | "CLAIMED" | "EXPIRED";
+          claim_deadline?: string | null;
+          claimed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["wl_claims"]["Insert"]>;
+        Relationships: [];
+      };
+
       admin_audit_logs: {
         Row: {
           id: string;
@@ -348,13 +414,20 @@ export type Database = {
           metadata?: Json;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["admin_audit_logs"]["Insert"]>;
+        Update: Partial<
+          Database["public"]["Tables"]["admin_audit_logs"]["Insert"]
+        >;
         Relationships: [];
       };
     };
+
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
 };
+
+export type WlClaimRow = Database["public"]["Tables"]["wl_claims"]["Row"];
+
+export type WlClaimStatus = WlClaimRow["status"];

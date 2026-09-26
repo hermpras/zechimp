@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type DrawResult = {
@@ -21,7 +22,8 @@ export type DrawResult = {
 
 /**
  * Deterministic PRNG using HMAC-SHA256 counter stream.
- * Converts HMAC output bytes to an unbiased random float in [0, 1).
+ *
+ * Converts HMAC output bytes to deterministic uint32 values.
  */
 class DeterministicPRNG {
   private secretSeed: string;
@@ -37,7 +39,9 @@ class DeterministicPRNG {
 
   private fillBuffer() {
     const hmac = crypto.createHmac("sha256", this.secretSeed);
+
     hmac.update(`${this.messagePrefix}:${this.counter}`);
+
     this.buffer = hmac.digest();
     this.bufferOffset = 0;
     this.counter++;
@@ -47,29 +51,39 @@ class DeterministicPRNG {
     if (this.bufferOffset + 4 > this.buffer.length) {
       this.fillBuffer();
     }
+
     const val = this.buffer.readUInt32BE(this.bufferOffset);
+
     this.bufferOffset += 4;
+
     return val;
   }
 
   /**
-   * Returns a deterministic integer in range [0, maxExclusive)
+   * Returns deterministic integer in range [0, maxExclusive).
    */
   public nextInt(maxExclusive: number): number {
-    if (maxExclusive <= 0) return 0;
-    // Unbiased range selection
+    if (maxExclusive <= 0) {
+      return 0;
+    }
+
     const maxUint32 = 0xffffffff;
+
     const limit = maxUint32 - (maxUint32 % maxExclusive);
+
     let rand = this.nextUint32();
+
     while (rand >= limit) {
       rand = this.nextUint32();
     }
+
     return rand % maxExclusive;
   }
 }
 
 /**
  * Executes a deterministic cryptographic draw for a CLOSED raffle.
+ *
  * Selects unique winning users based on entry snapshot weighting.
  */
 export async function executeDeterministicDraw(
@@ -78,7 +92,7 @@ export async function executeDeterministicDraw(
 ): Promise<DrawResult> {
   const adminClient = createSupabaseAdminClient();
 
-  // 1. Fetch Raffle
+  // 1. Fetch raffle
   const { data: raffle, error: raffleErr } = await adminClient
     .from("raffles")
     .select("*")
@@ -86,16 +100,22 @@ export async function executeDeterministicDraw(
     .single();
 
   if (raffleErr || !raffle) {
-    return { success: false, error: "Raffle not found." };
+    return {
+      success: false,
+      error: "Raffle not found.",
+    };
   }
 
-  // Idempotency: If already DRAWN, return existing winners
+  // 2. Idempotency:
+  // If already DRAWN, return existing winners.
   if (raffle.status === "DRAWN") {
     const { data: existingWinners } = await adminClient
       .from("raffle_winners")
       .select("winner_position, user_id, entry_id")
       .eq("raffle_id", raffleId)
-      .order("winner_position", { ascending: true });
+      .order("winner_position", {
+        ascending: true,
+      });
 
     return {
       success: true,
@@ -113,89 +133,141 @@ export async function executeDeterministicDraw(
     };
   }
 
-  // 2. Fetch all frozen entries ordered deterministically
+  // 3. Fetch all frozen entries ordered deterministically
   const { data: entries, error: entriesErr } = await adminClient
     .from("raffle_entries")
     .select("id, raffle_id, user_id, entry_index")
     .eq("raffle_id", raffleId)
-    .order("user_id", { ascending: true })
-    .order("entry_index", { ascending: true });
+    .order("user_id", {
+      ascending: true,
+    })
+    .order("entry_index", {
+      ascending: true,
+    });
 
   if (entriesErr || !entries || entries.length === 0) {
-    return { success: false, error: "No entries found for this raffle." };
+    return {
+      success: false,
+      error: "No entries found for this raffle.",
+    };
   }
 
-  // 3. Create canonical snapshot hash
-  const canonicalEntries = entries.map((e) => ({
-    id: e.id,
-    user_id: e.user_id,
-    entry_index: e.entry_index,
+  // 4. Create canonical snapshot hash
+  const canonicalEntries = entries.map((entry) => ({
+    id: entry.id,
+    user_id: entry.user_id,
+    entry_index: entry.entry_index,
   }));
+
   const snapshotJson = JSON.stringify(canonicalEntries);
+
   const snapshotHash = crypto
     .createHash("sha256")
     .update(snapshotJson)
     .digest("hex");
 
-  // 4. Secret Seed & Hash Commitment
+  // 5. Secret seed + hash commitment
   const secretSeed =
     providedSecretSeed || crypto.randomBytes(32).toString("hex");
+
   const seedHash = crypto.createHash("sha256").update(secretSeed).digest("hex");
 
-  // 5. Initialize Deterministic PRNG Stream
+  // 6. Initialize deterministic PRNG
   const prng = new DeterministicPRNG(secretSeed, raffleId, snapshotHash);
 
-  // 6. Draw Unique Winning Users
-  const uniqueUserIds = Array.from(new Set(entries.map((e) => e.user_id)));
+  // 7. Draw unique winning users
+  const uniqueUserIds = Array.from(
+    new Set(entries.map((entry) => entry.user_id)),
+  );
+
   const totalTargetWinners = Math.min(raffle.wl_spots, uniqueUserIds.length);
 
   let activePool = [...canonicalEntries];
+
   const selectedWinners: {
     winner_position: number;
     user_id: string;
     entry_id: string;
   }[] = [];
+
   const wonUserIds = new Set<string>();
 
   while (selectedWinners.length < totalTargetWinners && activePool.length > 0) {
     const drawnIdx = prng.nextInt(activePool.length);
+
     const chosenEntry = activePool[drawnIdx];
 
     if (!wonUserIds.has(chosenEntry.user_id)) {
       wonUserIds.add(chosenEntry.user_id);
+
       selectedWinners.push({
         winner_position: selectedWinners.length + 1,
         user_id: chosenEntry.user_id,
         entry_id: chosenEntry.id,
       });
 
-      // Remove ALL remaining entries belonging to the winning user so they cannot win twice
-      activePool = activePool.filter((e) => e.user_id !== chosenEntry.user_id);
+      // Remove ALL remaining entries belonging
+      // to the winning user so they cannot win twice.
+      activePool = activePool.filter(
+        (entry) => entry.user_id !== chosenEntry.user_id,
+      );
     } else {
-      // Safety fallback: remove single entry
       activePool.splice(drawnIdx, 1);
     }
   }
 
-  // 7. Persist winners to raffle_winners
-  const winnersToInsert = selectedWinners.map((w) => ({
+  // 8. Persist winners
+  const winnersToInsert = selectedWinners.map((winner) => ({
     raffle_id: raffleId,
-    entry_id: w.entry_id,
-    user_id: w.user_id,
-    winner_position: w.winner_position,
+    entry_id: winner.entry_id,
+    user_id: winner.user_id,
+    winner_position: winner.winner_position,
   }));
 
-  const { error: insertWinnersErr } = await adminClient
+  const { data: insertedWinners, error: insertWinnersErr } = await adminClient
     .from("raffle_winners")
-    .insert(winnersToInsert);
+    .insert(winnersToInsert)
+    .select("id, user_id, raffle_id");
 
-  if (insertWinnersErr) {
+  if (insertWinnersErr || !insertedWinners) {
     console.error("Failed to insert raffle winners:", insertWinnersErr);
-    return { success: false, error: "Failed to persist winner records." };
+
+    return {
+      success: false,
+      error: "Failed to persist winner records.",
+    };
   }
 
-  // 8. Update Raffle Status to DRAWN
+  // 9. Initialize WL claims for winners
+  //
+  // CLAIMABLE = winner has the right to claim.
+  // CLAIMED = wallet has been locked.
+  // EXPIRED = claim deadline passed.
+  const claimsToInsert = insertedWinners.map((winner) => ({
+    raffle_winner_id: winner.id,
+    user_id: winner.user_id,
+    raffle_id: winner.raffle_id,
+    wallet_address: "",
+    wallet_chain: "EVM",
+    status: "CLAIMABLE" as const,
+  }));
+
+  const { error: claimInsertError } = await adminClient
+    .from("wl_claims")
+    .insert(claimsToInsert);
+
+  if (claimInsertError) {
+    console.error("Failed to initialize WL claims:", claimInsertError);
+
+    return {
+      success: false,
+      error: "Failed to initialize WL claim records.",
+    };
+  }
+
+  // 10. Update raffle status to DRAWN
   const now = new Date().toISOString();
+
   await adminClient
     .from("raffles")
     .update({
@@ -205,9 +277,9 @@ export async function executeDeterministicDraw(
     })
     .eq("id", raffleId);
 
-  // 9. Record Admin Audit Log for reproducibility
+  // 11. Record admin audit log
   await adminClient.from("admin_audit_logs").insert({
-    admin_user_id: selectedWinners[0]?.user_id || raffle.id, // reference ID for system actions
+    admin_user_id: selectedWinners[0]?.user_id || raffle.id,
     action: "RAFFLE_DRAW_EXECUTED",
     entity_type: "raffle",
     entity_id: raffleId,

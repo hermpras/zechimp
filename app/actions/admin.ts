@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { verifyAdmin, logAdminAction } from "@/lib/admin";
 import { executeDeterministicDraw } from "@/lib/draw";
 import { processPointToTicketConversion, processReferralQualification } from "@/lib/economy";
+import { validateEvmWalletAddress } from "@/lib/claims";
 import type { Database } from "@/database/types";
 
 export type AdminActionResult = {
@@ -571,3 +572,187 @@ export async function reviewCommentProofAdminAction(
 
   return { success: true, message: "Comment proof approved and +5 points awarded!" };
 }
+
+// ==========================================
+// PHASE 8: CLAIM MONITORING & CSV EXPORT ACTIONS
+// ==========================================
+
+function escapeCsvField(val: string | number | null | undefined): string {
+  if (val === null || val === undefined) return "";
+  const str = String(val);
+  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+export type ExportCSVResult = {
+  success: boolean;
+  error?: string;
+  csvContent?: string;
+  filename?: string;
+};
+
+export async function exportClaimedWalletsCSVAdminAction(
+  raffleId: string,
+  format: "wallet_only" | "full" = "full",
+): Promise<ExportCSVResult> {
+  const { isAuthorized, userId } = await verifyAdmin();
+  if (!isAuthorized || !userId) {
+    return { success: false, error: "Unauthorized: Admin access required." };
+  }
+
+  const adminClient = createSupabaseAdminClient();
+
+  // Fetch raffle title & access code for filename
+  const { data: raffle } = await adminClient
+    .from("raffles")
+    .select("access_code, title")
+    .eq("id", raffleId)
+    .single();
+
+  if (!raffle) {
+    return { success: false, error: "Raffle not found." };
+  }
+
+  // Fetch ONLY CLAIMED wl_claims records for this raffle
+  const { data: claims, error: claimsErr } = await adminClient
+    .from("wl_claims")
+    .select("*")
+    .eq("raffle_id", raffleId)
+    .eq("status", "CLAIMED");
+
+  if (claimsErr || !claims) {
+    return { success: false, error: "Failed to query claimed wallets." };
+  }
+
+  // Fetch winner positions & X usernames for full operational export
+  const winnerIds = claims.map((c) => c.raffle_winner_id);
+  const { data: winners } = await adminClient
+    .from("raffle_winners")
+    .select("id, winner_position, user_id")
+    .in("id", winnerIds.length > 0 ? winnerIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const userIds = (winners || []).map((w) => w.user_id);
+  const { data: xAccounts } = await adminClient
+    .from("x_accounts")
+    .select("user_id, username")
+    .in("user_id", userIds.length > 0 ? userIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const { data: profiles } = await adminClient
+    .from("profiles")
+    .select("user_id, username")
+    .in("user_id", userIds.length > 0 ? userIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const exportItems = claims
+    .map((c) => {
+      const w = winners?.find((win) => win.id === c.raffle_winner_id);
+      const xAcc = xAccounts?.find((acc) => acc.user_id === c.user_id);
+      const prof = profiles?.find((p) => p.user_id === c.user_id);
+      const handle = xAcc?.username || prof?.username || "unknown";
+      return {
+        winner_position: w?.winner_position ?? 0,
+        x_username: handle.startsWith("@") ? handle : `@${handle}`,
+        wallet_address: c.wallet_address,
+        raffle_id: c.raffle_id,
+        claim_status: c.status,
+        claimed_at: c.claimed_at || c.created_at,
+      };
+    })
+    .sort((a, b) => a.winner_position - b.winner_position);
+
+  let csvContent = "";
+
+  if (format === "wallet_only") {
+    const lines = ["wallet_address"];
+    exportItems.forEach((item) => {
+      lines.push(escapeCsvField(item.wallet_address));
+    });
+    csvContent = lines.join("\n");
+  } else {
+    const lines = [
+      "winner_position,x_username,wallet_address,raffle_id,claim_status,claimed_at",
+    ];
+    exportItems.forEach((item) => {
+      lines.push(
+        [
+          escapeCsvField(item.winner_position),
+          escapeCsvField(item.x_username),
+          escapeCsvField(item.wallet_address),
+          escapeCsvField(item.raffle_id),
+          escapeCsvField(item.claim_status),
+          escapeCsvField(item.claimed_at),
+        ].join(","),
+      );
+    });
+    csvContent = lines.join("\n");
+  }
+
+  await logAdminAction(userId, "CLAIM_EXPORT", "raffle", raffleId, {
+    format,
+    exported_count: exportItems.length,
+  });
+
+  const sanitizedCode = raffle.access_code.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  const filename = `${sanitizedCode || "raffle"}-claimed-wallets.csv`;
+
+  return {
+    success: true,
+    csvContent,
+    filename,
+  };
+}
+
+export async function overrideWalletAddressAdminAction(
+  claimId: string,
+  newWalletAddress: string,
+): Promise<AdminActionResult> {
+  const { isAuthorized, userId } = await verifyAdmin();
+  if (!isAuthorized || !userId) {
+    return { success: false, error: "Unauthorized: Admin access required." };
+  }
+
+  const validation = validateEvmWalletAddress(newWalletAddress);
+  if (!validation.valid || !validation.normalizedAddress) {
+    return { success: false, error: validation.error || "Invalid EVM wallet address." };
+  }
+
+  const adminClient = createSupabaseAdminClient();
+
+  const { data: existingClaim } = await adminClient
+    .from("wl_claims")
+    .select("*")
+    .eq("id", claimId)
+    .single();
+
+  if (!existingClaim) {
+    return { success: false, error: "WL claim record not found." };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await adminClient
+    .from("wl_claims")
+    .update({
+      wallet_address: validation.normalizedAddress,
+      status: "CLAIMED",
+      claimed_at: existingClaim.claimed_at || now,
+      updated_at: now,
+    })
+    .eq("id", claimId);
+
+  if (error) {
+    return { success: false, error: "Failed to override wallet address in database." };
+  }
+
+  await logAdminAction(userId, "WALLET_OVERRIDE", "wl_claim", claimId, {
+    previous_wallet_address: existingClaim.wallet_address,
+    new_wallet_address: validation.normalizedAddress,
+    user_id: existingClaim.user_id,
+  });
+
+  revalidatePath("/admin/raffles");
+  revalidatePath("/dashboard");
+
+  return { success: true, message: "Wallet address overridden successfully!" };
+}
+

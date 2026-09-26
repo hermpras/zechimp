@@ -7,7 +7,9 @@ import { LogoutButton } from "@/app/components/auth-button";
 import { CampaignSection } from "@/app/components/campaign-section";
 import { ReferralCard } from "@/app/components/referral-card";
 import { RaffleCard, type WinnerInfo } from "@/app/components/raffle-card";
+import { WLClaimCard } from "@/app/components/wl-claim-card";
 import { getOrCreateReferralCode } from "@/lib/economy";
+import { getOrCreateWinnerClaim } from "@/lib/claims";
 import { getSiteUrl } from "@/lib/env";
 import type { Database } from "@/database/types";
 
@@ -198,6 +200,11 @@ export default async function DashboardPage() {
     }
   }
 
+  let winnerClaimData = null;
+  if (raffle && raffle.status === "DRAWN") {
+    winnerClaimData = await getOrCreateWinnerClaim(user.id, raffle.id);
+  }
+
   const username = xAccount?.username || profile?.username || "unknown";
   const displayName =
     xAccount?.display_name || profile?.display_name || username;
@@ -261,6 +268,16 @@ export default async function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* WL Winner Claim Card if current user is a winner */}
+        {winnerClaimData && (
+          <WLClaimCard
+            raffleWinnerId={winnerClaimData.winnerId}
+            winnerPosition={winnerClaimData.winnerPosition}
+            claim={winnerClaimData.claim}
+            raffleTitle={raffle?.title || "GENESIS WL"}
+          />
+        )}
 
         {/* Economy & Referrals Section */}
         <ReferralCard
